@@ -125,8 +125,7 @@ for suffix in suffixs:
                         [numpy.argwhere(cbsas[i].values == x).flatten() for x in
                          numpy.unique(cbsas_delineation['CBSA Code'])]])
             x=np.hstack([pops[i][cbsas[i]==x] for x in year_data['cbsa_code']])
-            pop_fraction.append(numpy.median((year_data['iat_n'].values/x)[(year_data['iat_n'].values>threshold)]))
-            z=np.hstack([hom_corr[i][cbsas[i]==x] for x in year_data['cbsa_code']])
+            pop_fraction.append(numpy.median((year_data['iat_n'].values/x)[(year_data['iat_n'].values>threshold)]))            
             w=np.hstack([white_pop[i][cbsas[i]==x] for x in year_data['cbsa_code']])
             b = np.hstack([black_pop[i][cbsas[i] == x] for x in year_data['cbsa_code']])
             wh = np.hstack([white_hom[i][cbsas[i] == x] for x in year_data['cbsa_code']])
@@ -140,8 +139,7 @@ for suffix in suffixs:
             split_cbsas = numpy.array([x[0] for x in split_halves[i]])
             splits = numpy.array([x[1] for x in split_halves[i]])[np.hstack([np.argwhere(split_cbsas == x).flatten() for x in year_data['cbsa_code']])]
             keep = ~np.isnan(y) & (n>threshold)
-            x = x[keep]
-            z = z[keep]
+            x = x[keep]            
             w = w[keep]
             b = b[keep]
             wh = wh[keep]
@@ -183,8 +181,7 @@ for suffix in suffixs:
             noise_r2.append([numpy.vstack(noise).mean(0)[1]**2,numpy.vstack(noise).mean(0)[0]**2, overall_fit.rsquared, overall_fit.rsquared/numpy.vstack(noise).mean(0)[1]**2])
 
             adi_keep = ~numpy.isnan(adi)
-            x = x[adi_keep]
-            z = z[adi_keep]
+            x = x[adi_keep]    
             w = w[adi_keep]
             b = b[adi_keep]
             wh = wh[adi_keep]
@@ -204,8 +201,7 @@ for suffix in suffixs:
             adfs.append([overall_fit_adi,overall_fit_adi_no_adi])
             
             heat_keep = ~numpy.isnan(heat)
-            x = x[heat_keep]
-            z = z[heat_keep]
+            x = x[heat_keep]            
             w = w[heat_keep]
             b = b[heat_keep]
             wh = wh[heat_keep]
