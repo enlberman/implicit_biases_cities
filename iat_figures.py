@@ -59,13 +59,12 @@ joined_adi = joined_adi.groupby('CBSA Code').mean().reset_index()[['CBSA Code', 
 all_r2s = []
 suffixs = ['','_seg_idx','_gini','_exp']
 for suffix in suffixs:
-    pops = numpy.load('pops'+suffix+'.npy',allow_pickle=True)
-    cbsas = numpy.load('cbsas'+suffix+'.npy',allow_pickle=True)
-    hom_corr = numpy.load('hom_corr'+suffix+'.npy',allow_pickle=True)
-    white_pop = numpy.load('white_pop'+suffix+'.npy',allow_pickle=True)
-    black_pop = numpy.load('black_pop'+suffix+'.npy',allow_pickle=True)
-    white_hom = numpy.load('white_hom'+suffix+'.npy',allow_pickle=True)
-    black_hom = numpy.load('black_hom'+suffix+'.npy',allow_pickle=True)
+    pops = numpy.load(join(data_path,'pops'+suffix+'.npy'),allow_pickle=True)
+    cbsas = numpy.load(join(data_path,'cbsas'+suffix+'.npy'),allow_pickle=True)
+    white_pop = numpy.load(join(data_path,'white_pop'+suffix+'.npy'),allow_pickle=True)
+    black_pop = numpy.load(join(data_path,'black_pop'+suffix+'.npy'),allow_pickle=True)
+    white_hom = numpy.load(join(data_path,'white_hom'+suffix+'.npy'),allow_pickle=True)
+    black_hom = numpy.load(join(data_path,'black_hom'+suffix+'.npy'),allow_pickle=True)
 
 
     plt.clf()
