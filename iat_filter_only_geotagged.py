@@ -11,9 +11,11 @@ cols_of_interest = [
     "birthyear",
     "num_002", # number of iats complete
     "raceomb_002",
+    "raceomb002",
     "raceomb",
     "raceombmulti",
     "ethnicityomb",
+    "birthSex",
     "birthsex",
     "sex",
     "edu_14",
@@ -25,6 +27,7 @@ cols_of_interest = [
 ]
 
 data_path = 'IAT_data'
+data_path = '/home/andrewstier/Downloads/IAT_data'
 
 years = list(range(2010,2021))
 for year in years:

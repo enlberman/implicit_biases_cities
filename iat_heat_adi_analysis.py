@@ -36,14 +36,15 @@ adi_data['ADI_NATRANK'] = adi_data['ADI_NATRANK'].astype(float)
 adi_data['county'] = adi_data['county'].astype(int).astype(str)
 adi_data['county'] = adi_data['county'].map(lambda x: x if len(x)==5 else '0'+x)
 adi_data = adi_data[['county','ADI_NATRANK']].groupby('county').mean()
-cbsas_delineation = pandas.read_csv(join(data_path,'delineation_2020.csv',skiprows=0))
+
+cbsas_delineation = pandas.read_csv(join(data_path,'delineation_2020.csv'),skiprows=0)
 cbsas_delineation['FIPS State Code'] = cbsas_delineation['FIPS State Code'].astype(str).map(lambda x: x if len(x) == 2 else '0' + x)
 cbsas_delineation['FIPS County Code'] = cbsas_delineation['FIPS County Code'].astype(str).map(
     lambda x: x if len(x) == 3 else ('0' + x) if len(x) == 2 else '00' + x)
 cbsas_delineation['county'] = cbsas_delineation['FIPS State Code'].astype(str) + cbsas_delineation['FIPS County Code'].astype(str)
 
 joined_heat = heat_data.set_index('county').join(cbsas_delineation.set_index('county'), rsuffix='_')[['Avg Daily Max Heat Index (C)','CBSA Code']
-].groupby('CBSA Code').std().reset_index()
+].groupby('CBSA Code').mean().reset_index()
 
 joined_adi = adi_data.join(cbsas_delineation.set_index('county'), rsuffix='_')[['ADI_NATRANK','CBSA Code']
 ].groupby('CBSA Code').mean().reset_index()
@@ -80,7 +81,7 @@ plt.xscale('log')
 f = OLS(y,add_constant(numpy.log(x))).fit()
 rs = spearmanr(x[~numpy.isnan(x)],y[~numpy.isnan(x)])
 plt.plot(x[numpy.argsort(x)],f.fittedvalues[numpy.argsort(x)],color='k',linestyle='--')
-plt.text(.105,29,r'$r_s=%.2f$'%rs[0]+'\n'+r'$p=%.2e$' % rs[1],size=15)
+plt.text(.105,29,r'$r_s=%.2f$'%rs[0]+'\n'+r'$p=%.2e$' % rs[1] if rs[1]>= 0.001 else r"$p<0.001$",size=15)
 plt.xlabel('% Black')
 plt.ylabel('Average Daily Max Heat Index (C)')
 plt.savefig(join(figure_path,'heat_black.png'),dpi=300)

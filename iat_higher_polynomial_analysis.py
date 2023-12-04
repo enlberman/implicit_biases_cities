@@ -16,7 +16,7 @@ STATE_FIPS = {"AL":"01","AK":"02","AZ":"04","AR":"05","CA":"06","CO":"08","CT":"
 data_path = 'IAT_data'
 figure_path = 'IAT_figures'
 iat_data = pandas.read_csv(join(data_path,'cbsa_iat.csv'))
-cbsas_delineation = pandas.read_csv(join(data_path,'delineation_2020.csv',skiprows=0))
+cbsas_delineation = pandas.read_csv(join(data_path,'delineation_2020.csv'),skiprows=0)
 cbsas_delineation['FIPS State Code'] = cbsas_delineation['FIPS State Code'].astype(str).map(lambda x: x if len(x) == 2 else '0' + x)
 cbsas_delineation['FIPS County Code'] = cbsas_delineation['FIPS County Code'].astype(str).map(
     lambda x: x if len(x) == 3 else ('0' + x) if len(x) == 2 else '00' + x)
@@ -33,6 +33,7 @@ threshold = 500
 suffixs = ['','_seg_idx','_gini','_exp']
 A =[]
 R = []
+fits = []
 for suffix in suffixs:
     hom_corr = numpy.load(join(data_path,'hom_corr'+suffix+'.npy'),allow_pickle=True)
     white_pop = numpy.load(join(data_path,'white_pop'+suffix+'.npy'),allow_pickle=True)
@@ -63,6 +64,7 @@ for suffix in suffixs:
             print(j)
             x = numpy.vstack([x.T,wh[keep]**(j+1)+bh[keep]**(j+1)]).T
             f.append(OLS(resid, add_constant(x)).fit())
+        fits.append([suffix,f])
         r2 = [t.rsquared_adj if t.f_pvalue<.05 else numpy.nan for t in f]
         aic = [t.aic if t.f_pvalue<.05 else numpy.nan for t in f]
         # plt.clf()
@@ -110,8 +112,35 @@ plt.xlabel('polynomial degree')
 plt.ylabel(r'adjusted $R^2$')
 plt.savefig(join(figure_path,'higher_order_polynomial_R2.png'),dpi=300)
 
+c=0
+with open(join(figure_path,'complete_model_summaries.csv'),'a') as f:
+    f.write('Higher Order Polynomial Model Ordinary Least Squares Regression Results\n')
+    f.write('Threshold: at least %d participants\n' % threshold)
+    for t in fits:
+        if t[0] == '':
+            suffix = "Mean Exposure"
+        if t[0] == '_seg_idx':
+            suffix = "Segregation Index"
+        if t[0] == '_gini':
+            suffix = "Gini Coefficient"
+        if t[0] == '_exp':
+            suffix = "Exposure Index"
+        f.write('Segregation Measure: %s\n' % suffix)
+        dfs = t[1]
+        f.write('Degree, Adjusted R Squared, AIC, F Value, F p-value\n')
+        for i in range(len(dfs)):
+            row = [
+                str(i+1),
+                '%.3f' % dfs[i].rsquared_adj,
+                '%.3f' % dfs[i].aic,
+                '%.3f' % dfs[i].fvalue,
+                '%.3f' % dfs[i].f_pvalue if dfs[i].f_pvalue>0.001 else '<.001'
+            ]
+            f.write(','.join(row) + '\n')
+            c+=1
+    f.write('\n\n')
 
-
+print(c)
 
 
 

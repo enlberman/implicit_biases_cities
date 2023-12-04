@@ -1,7 +1,11 @@
+from concurrent.futures import ProcessPoolExecutor
+
 import numpy as np
 import pandas
 from os.path import join
 import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 STATE_FIPS = {"AL":"01","AK":"02","AZ":"04","AR":"05","CA":"06","CO":"08","CT":"09","DE":"10","DC":"11","FL":"12","GA":"13","HI":"15","ID":"16","IL":"17","IN":"18","IA":"19","KS":"20","KY":"21","LA":"22","ME":"23","MD":"24","MA":"25","MI":"26","MN":"27","MS":"28","MO":"29","MT":"30","NE":"31","NV":"32","NH":"33","NJ":"34","NM":"35","NY":"36","NC":"37","ND":"38","OH":"39","OK":"40","OR":"41","PA":"42","RI":"44","SC":"45","SD":"46","TN":"47","TX":"48","UT":"49","VT":"50","VA":"51","WA":"53","WV":"54","WI":"55","WY":"56","AS":"60","GU":"66","MP":"69","PR":"72","VI":"78"}
 
 
@@ -10,8 +14,10 @@ cols_of_interest = [
     "birthyear",
     "num_002", # number of iats complete
     "raceomb_002",
+    "raceomb002",
     "raceomb",
     "birthsex",
+    "birthSex",
     "edu_14",
     "politicalid_7",
     "religionid",
@@ -20,9 +26,13 @@ cols_of_interest = [
 
 ]
 
+iat_race_cols = [    "raceomb_002",
+    "raceomb002",
+    "raceomb",]
+birthsex_cols = ["birthsex","birthSex"]
+
 data_path = 'IAT_data'
 
-slave_data = pandas.read_csv(join(data_path,'slaves_1860_jop_dataverse/abs-jop-cces-white-countydata.csv'))
 
 cbsas_delineation = pandas.read_csv(join(data_path,'delineation_2020.csv'),skiprows=0)#skiprows=2
 cbsas_delineation['FIPS State Code'] = cbsas_delineation['FIPS State Code'].astype(str).map(lambda x: x if len(x) == 2 else '0' + x)
@@ -31,10 +41,14 @@ cbsas_delineation['FIPS County Code'] = cbsas_delineation['FIPS County Code'].as
 cbsas_delineation['county'] = cbsas_delineation['FIPS State Code'].astype(str) + cbsas_delineation['FIPS County Code'].astype(str)
 
 years = list(range(2010,2021))
-data = []
+data=[]
 for year in years:
     print(year)
     iat_data = pandas.read_csv(join(data_path,'race_iat_geo_data_%d.csv' % year))
+    iat_data['raceomb'] = iat_data[iat_race_cols[np.argwhere([len(np.unique(iat_data[c].values.astype(str)))>1 for c in iat_race_cols]).flatten()[0]]]
+    birthsex_col = np.argwhere([len(np.unique(iat_data[c].values.astype(str)))>1 for c in birthsex_cols]).flatten()
+    birthsex_col = birthsex_col.flatten()[0] if len(birthsex_col) > 0 else 0
+    iat_data['birthsex'] = iat_data[birthsex_cols[birthsex_col]]
 
     year = str(int(year))
     race_eth = pandas.read_csv(join(data_path,'ACSDT5Y%s.B02001_data_with_overlays.csv') % year)
@@ -61,13 +75,14 @@ for year in years:
     cbsa_codes = np.unique(cbsas['CBSA Code'])
 
     joined_race_eth = race_eth.set_index('county').join(cbsas.set_index('county')).reset_index()
-    
-    for cbsa in np.unique(cbsas_delineation['CBSA Code']):
-        cbsa_df = cbsas_delineation[cbsas_delineation['CBSA Code']==cbsa]
+
+    def get_cbsa_data(cbsa):
+        cbsa_df = cbsas_delineation[cbsas_delineation['CBSA Code'] == cbsa]
         cbsa_iat = iat_data[iat_data['COUNTY'].astype(str).isin(cbsa_df['county'])]
-        cbsa_iat = cbsa_iat[cbsa_iat['D_biep.White_Good_all']!=' ']
+        cbsa_iat = cbsa_iat[cbsa_iat['D_biep.White_Good_all'] != ' ']
 
-
+        if len(cbsa_iat) == 0:
+            return None
         cbsa_race_eth = joined_race_eth[joined_race_eth['CBSA Code'] == cbsa]
         ratios = np.array([
             cbsa_race_eth[x].astype(float).sum() / cbsa_race_eth[total_column].astype(float).sum()
@@ -102,32 +117,42 @@ for year in years:
                                   / (np.nansum(local_ratio[i] * tot) * (1 - ratios[i]))
                                   - ratios[i] / (1 - ratios[i]))
 
-        heterophobia_adjustment =(homophily[0] if ~np.isnan(homophily[0]) else 0) +\
-                                         (homophily[1] if ~np.isnan(homophily[1]) else 0)
+        heterophobia_adjustment = (homophily[0] if ~np.isnan(homophily[0]) else 0) + \
+                                  (homophily[1] if ~np.isnan(homophily[1]) else 0)
 
-        heterophobia_adjustment_seg =        (seggregation_index[0] if ~np.isnan(seggregation_index[0]) else 0) +\
-                                         (seggregation_index[1] if ~np.isnan(seggregation_index[1]) else 0)
+        heterophobia_adjustment_seg = (seggregation_index[0] if ~np.isnan(seggregation_index[0]) else 0) + \
+                                      (seggregation_index[1] if ~np.isnan(seggregation_index[1]) else 0)
 
-        heterophobia_adjustment_gini =\
-                                         (gini_index[0] if ~np.isnan(gini_index[0]) else 0) +\
-                                         (gini_index[1] if ~np.isnan(gini_index[1]) else 0)
+        heterophobia_adjustment_gini = \
+            (gini_index[0] if ~np.isnan(gini_index[0]) else 0) + \
+            (gini_index[1] if ~np.isnan(gini_index[1]) else 0)
 
-        heterophobia_adjustment_exp =\
-                                         (inter_exposure[0] if ~np.isnan(inter_exposure[0]) else 0) +\
-                                         (inter_exposure[1] if ~np.isnan(inter_exposure[1]) else 0)
+        heterophobia_adjustment_exp = \
+            (inter_exposure[0] if ~np.isnan(inter_exposure[0]) else 0) + \
+            (inter_exposure[1] if ~np.isnan(inter_exposure[1]) else 0)
 
-        maj_group_adjustment = np.log(ratios[0]-ratios[0]**2)
+        maj_group_adjustment = np.log(ratios[0] - ratios[0] ** 2)
 
-        if cbsa_iat.shape[0]>500:
+        if cbsa_iat.shape[0] > 500:
             pop_shape = cbsa_pop[cbsa_pop['cbsa_code'] == str(cbsa)].shape[0]
             cbsa_iat['cbsa_code'] = np.repeat(cbsa, cbsa_iat.shape[0])
-            cbsa_iat['cbsa_pop'] = np.repeat(cbsa_pop[cbsa_pop['cbsa_code'] == str(cbsa)]['B01003_001E'].values[0] if pop_shape>0 else np.nan, cbsa_iat.shape[0])
+            cbsa_iat['cbsa_pop'] = np.repeat(
+                cbsa_pop[cbsa_pop['cbsa_code'] == str(cbsa)]['B01003_001E'].values[0] if pop_shape > 0 else np.nan,
+                cbsa_iat.shape[0])
             cbsa_iat['maj_group_adjust'] = np.repeat(maj_group_adjustment, cbsa_iat.shape[0])
             cbsa_iat['het_correction'] = np.repeat(heterophobia_adjustment, cbsa_iat.shape[0])
             cbsa_iat['het_correction_seg'] = np.repeat(heterophobia_adjustment_seg, cbsa_iat.shape[0])
             cbsa_iat['het_correction_exp'] = np.repeat(heterophobia_adjustment_exp, cbsa_iat.shape[0])
             cbsa_iat['het_correction_gini'] = np.repeat(heterophobia_adjustment_gini, cbsa_iat.shape[0])
-            data.append(cbsa_iat)
+            return cbsa_iat
+        else:
+            return None
+    # now parallelize
+    with ProcessPoolExecutor(max_workers=8) as executor:
+        results = executor.map(get_cbsa_data, np.unique(cbsas_delineation['CBSA Code']))
+    res = [x for x in results]
+    data = data + list(filter(lambda x: x is not None,res))
     pandas.concat(data).to_csv(join(data_path,'cbsa_iat_individual_%s.csv' % year))
+
     print('done with %s' % year)
 

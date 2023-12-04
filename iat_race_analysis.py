@@ -47,7 +47,7 @@ for j in range(len(years)):
     x = data['white']
     y = data['white_pop']
     rs = spearmanr(x[~numpy.isnan(x) & ~numpy.isnan(y)], y[~numpy.isnan(x) & ~numpy.isnan(y)])
-    plt.scatter(x, y, label=r'$r_s=%.2f; p=%.2e$' % (rs[0], rs[1]))
+    plt.scatter(x, y, label=r'$r_s=%.2f; p<0.001$' % (rs[0]))
     plt.xlabel('iat sample % white')
     plt.ylabel('cbsa population % white')
     plt.legend()
@@ -55,14 +55,15 @@ for j in range(len(years)):
     x = data['black']
     y = data['black_pop']
     rs2 = spearmanr(x[~numpy.isnan(x) & ~numpy.isnan(y)], y[~numpy.isnan(x) & ~numpy.isnan(y)])
-    plt.scatter(x, y, label=r'$r_s=%.2f; p=%.2e$' % (rs2[0], rs2[1]))
+    plt.scatter(x, y, label=r'$r_s=%.2f; p<0.001$' % (rs2[0]))
     plt.legend()
     plt.xlabel('iat sample % black')
     plt.ylabel('cbsa population % black')
     plt.tight_layout()
+    print(len(x))
     plt.savefig(join(figure_path,'Race_comparison_figure_%s.png' % str(year)), dpi=300)
-    spearmans.append([year,'%.2f'% rs[0],'%.2e'% rs[1],'%.2f' % rs2[0],
-                      '%.2e' % rs2[1],len(x)])\
+    spearmans.append([year,'%.2f'% rs[0],'%.2e'% rs[1] if rs[1]>=0.001 else '<0.001','%.2f' % rs2[0],
+                      '%.2e' % rs2[1] if rs2[1]>=0.001 else '<0.001',len(x)])\
         #,n_individuals, n_individual_total])
 
 spearmans = numpy.vstack(spearmans)

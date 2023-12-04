@@ -16,7 +16,7 @@ STATE_FIPS = {"AL":"01","AK":"02","AZ":"04","AR":"05","CA":"06","CO":"08","CT":"
 data_path = 'IAT_data'
 figure_path = 'IAT_figures'
 
-iat_data = pandas.read_csv(join(data_path,'IAT_data/cbsa_iat.csv'))
+iat_data = pandas.read_csv(join(data_path,'cbsa_iat.csv'))
 
 
 suffixs = ['','_seg_idx','_gini','_exp']

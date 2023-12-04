@@ -42,7 +42,7 @@ cbsas_delineation['FIPS County Code'] = cbsas_delineation['FIPS County Code'].as
     lambda x: x if len(x) == 3 else ('0' + x) if len(x) == 2 else '00' + x)
 cbsas_delineation['county'] = cbsas_delineation['FIPS State Code'].astype(str) + cbsas_delineation['FIPS County Code'].astype(str)
 
-joined_heat = heat_data.join(cbsas_delineation,rsuffix='_').groupby('CBSA Code').mean().reset_index()[
+joined_heat = heat_data.set_index('county').join(cbsas_delineation.set_index('county'),rsuffix='_').groupby('CBSA Code')['Avg Daily Max Heat Index (C)'].mean().reset_index()[
     ['CBSA Code', 'Avg Daily Max Heat Index (C)']
 ]
 joined_adi = adi_data.set_index('county').join(cbsas_delineation[['CBSA Code','county']])
@@ -52,11 +52,71 @@ joined_adi = joined_adi[(joined_adi['ADI_NATRANK']!='GQ') &
                         (joined_adi['ADI_NATRANK']!='PH') &
                         (joined_adi['ADI_NATRANK']!='QDI') ]
 joined_adi['ADI_NATRANK'] = joined_adi['ADI_NATRANK'].astype(float)
-joined_adi = joined_adi.groupby('CBSA Code').mean().reset_index()[['CBSA Code', 'ADI_NATRANK']]
+joined_adi = joined_adi.groupby('CBSA Code')['ADI_NATRANK'].mean().reset_index()[['CBSA Code', 'ADI_NATRANK']]
 
 ############################################################
 
+years = range(2010,2021)
+for year in years:
+    data = pandas.read_csv(join(data_path,'cbsa_iat_individual_%d.csv' % year))
+    data = data[data['edu_14']!=' ']
+    data = data[data['edu_14'].astype(str) != 'nan']
+    birthsex_col = 'birthsex'
+    if np.unique(data['birthsex'].astype(str)).shape[0]>2:
+        data = data[data['birthsex'] != ' ']
+        data = data[data['birthsex'].astype(str) != 'nan']
+
+    if np.unique(data['raceomb'].astype(str)).shape[0] > 2:
+        data = data[data['raceomb'].astype(str) != ' ']
+        data = data[data['raceomb'].astype(str) != 'nan']
+        race_col = 'raceomb'
+
+    data = data[~np.isnan(data['cbsa_pop'])]
+    data['bias'] = data['D_biep.White_Good_all']>0
+    data['D_biep.White_Good_all'] = data['D_biep.White_Good_all'] + np.abs(data['D_biep.White_Good_all'].min()) + 1
+    bsdf = data[~numpy.isnan(data[birthsex_col].astype(float))]
+    if bsdf.shape[0]>0:
+        print((bsdf[birthsex_col]=='1').sum(),(bsdf[birthsex_col]=='2').sum(),(bsdf[birthsex_col]=='1').sum()+(bsdf[birthsex_col]=='2').sum(),len(bsdf))
+    race_cat = categorical(data[race_col].values)
+    df = pandas.DataFrame(np.vstack([
+        np.log(data['cbsa_pop'].values),
+        race_cat[:, [6, 5, 8]].astype(int).T if race_cat.shape[1]>2 else race_cat[:, [1]].astype(int).T,
+        categorical(data[birthsex_col].values.astype(float))[:,[1]].astype(float).T,
+        categorical(data['edu_14'].values.astype(str))[:, [1, 2, 3, 4]].astype(float).sum(1).astype(int),
+        categorical(data['edu_14'].values.astype(str))[:, [5, 6, 7]].astype(float).sum(1).astype(int),
+        categorical(data['edu_14'].values.astype(str))[:, 8:].astype(float).sum(1).astype(int),
+        data['maj_group_adjust'].values,
+        data['het_correction'].values
+    ]).T, columns=[
+        'ln(population)',]+([
+        'White',
+        'Black',
+        'Multiracial'] if race_cat.shape[1]>2 else ['White'])+[
+        'Birth Sex',
+        'High School or Less',
+        'College',
+        'Advanced Degree',
+        'Diversity',
+        'Segregation'
+    ])
+    means = df.mean()
+    means['Birth Sex'] = 0 if means['Birth Sex'] == 1 else means['Birth Sex']
+    cols_to_keep = np.array(list(df.columns))[means!=0]
+
+    df = df[cols_to_keep]
+    df = df.reset_index().set_index('index')
+    individual_fit = Logit(data.reset_index()['bias'], add_constant(df[list(df.columns)])).fit()
+    if np.isnan(individual_fit.pvalues.values[0]):
+        individual_fit = Logit(data.reset_index()['bias'], add_constant(df.drop('High School or Less',inplace=False,axis=1))).fit()
+    with open(join(figure_root_path,'individual_iat_fit_%d.txt' % year), 'w') as f:
+        f.write(individual_fit.summary().as_latex())
+
+
+
+############################################################
 all_r2s = []
+all_summaries = []
+all_summaries_heat = []
 suffixs = ['','_seg_idx','_gini','_exp']
 for suffix in suffixs:
     pops = numpy.load(join(data_path,'pops'+suffix+'.npy'),allow_pickle=True)
@@ -99,8 +159,8 @@ for suffix in suffixs:
         scaling_fits = []
         overall_fits = []
         slave_fits = []
-        # hfs = []
-        # adfs = []
+        hfs = []
+        adfs = []
         ns = []
         pop_fraction = []
         xs = []
@@ -144,7 +204,7 @@ for suffix in suffixs:
             b = b[keep]
             wh = wh[keep]
             bh = bh[keep]
-            splits = splits[keep]
+            # splits = splits[keep]
             heat = heat[keep]
             adi = adi[keep]
             y = y[keep].values
@@ -269,6 +329,14 @@ for suffix in suffixs:
             '%.3f' % all_fits[j][2][i].rsquared_adj,
             '%.3f' % (all_fits[j][1][i].rsquared_adj-all_fits[j][2][i].rsquared_adj),
             '%.3f' % all_fits[j][3][i].rsquared_adj,
+            '%.3f' % all_fits[0][1][i].f_pvalue if all_fits[0][1][i].f_pvalue>0.001 else '<0.001',
+            '%.3f' % all_fits[0][1][i].fvalue,
+            '%.3f' % all_fits[j][0][i].tvalues[1],
+            '%.3f' % all_fits[j][0][i].pvalues[1] if all_fits[j][0][i].pvalues[1]>0.001 else '<0.001',
+            '%.3f' % all_fits[j][1][i].tvalues[2],
+            '%.3f' % all_fits[j][1][i].pvalues[2] if all_fits[j][1][i].pvalues[2]>0.001 else '<0.001',
+            '%.3f' % all_fits[j][1][i].tvalues[1],
+            '%.3f' % all_fits[j][1][i].pvalues[1] if all_fits[j][1][i].pvalues[1]>0.001 else '<0.001',
             '%d' % all_fits[j][3][i].nobs
         ] for i in range(len(years)+1)],columns=[
             'year',
@@ -279,8 +347,50 @@ for suffix in suffixs:
             r'diversity $R^2$',
             r'segregation $R^2$',
             r'overall $R^2$',
+            r'model F p-value',
+            r'model F',
+            r'scaling t',
+            r'scaling p-value',
+            r'diversity t',
+            r'diversity p-value',
+            r'segregation t',
+            r'segregation p-value',
             r'\# cities']) for j in range(len(thresholds))
                    ]
+    summary_heat_dfs = pandas.DataFrame([(years[i],
+                                          '%.3f' % adi_fits[0][i][1].rsquared,
+                                          '%.3f' % adi_fits[0][i][0].rsquared,
+                                          '%d' % adi_fits[0][i][0].nobs,
+                                          '%.3f' % adi_fits[0][i][1].fvalue,
+                                          '%.3f' % adi_fits[0][i][1].f_pvalue if adi_fits[0][i][1].f_pvalue>0.001 else '<0.001',
+                                          '%.3f' % adi_fits[0][i][0].fvalue,
+                                            '%.3f' % adi_fits[0][i][0].f_pvalue if adi_fits[0][i][0].f_pvalue>0.001 else '<0.001',
+                                          '%.3f' % heat_fits[0][i][1].rsquared,
+                                          '%.3f' % heat_fits[0][i][0].rsquared,
+                                          '%d' % heat_fits[0][i][0].nobs,
+                                            '%.3f' % heat_fits[0][i][1].fvalue,
+                                            '%.3f' % heat_fits[0][i][1].f_pvalue if heat_fits[0][i][1].f_pvalue>0.001 else '<0.001',
+                                            '%.3f' % heat_fits[0][i][0].fvalue,
+                                            '%.3f' % heat_fits[0][i][0].f_pvalue if heat_fits[0][i][0].f_pvalue>0.001 else '<0.001',
+                                          ) for i in range(len(years))],
+                                        columns=['year',
+            r'no ADI $R^2$',
+            r'ADI $R^2$',
+            r'ADI n',
+            r'no ADI F',
+            r'no ADI F p-value',
+            r'ADI F',
+            r'ADI F p-value',
+            r'no HI $R^2$',
+            r'HI $R^2$',
+            r'HI n',
+            r'no HI F',
+            r'no HI F p-value',
+            r'HI F',
+            r'HI F p-value',
+            ])
+    all_summaries.append([suffix, summary_dfs])
+    all_summaries_heat.append([suffix, summary_heat_dfs])
     heat_df = pandas.DataFrame([(years[i],'%.3f' % adi_fits[0][i][1].rsquared,'%.3f' % adi_fits[0][i][0].rsquared,'%d' % adi_fits[0][i][0].nobs,'%.3f' % heat_fits[0][i][1].rsquared,'%.3f' % heat_fits[0][i][0].rsquared,'%d' % heat_fits[0][i][0].nobs) for i in range(len(years))], columns=['year',
             r'no ADI $R^2$',
             r'ADI $R^2$',
@@ -487,57 +597,42 @@ pandas.DataFrame({'noise ceiling':numpy.vstack(noises).flatten()}).to_csv(
 )
 
 
-years = range(2010,2021)
-for year in years:
-    data = pandas.read_csv(join(data_path,'cbsa_iat_individual_%d.csv' % year))
-    data = data[data['edu_14']!=' ']
-    data = data[data['edu_14'].astype(str) != 'nan']
-    if np.unique(data['birthsex'].astype(str)).shape[0]>2:
-        data = data[data['birthsex'] != ' ']
-        data = data[data['birthsex'].astype(str) != 'nan']
-    if year>=2016:
-        data = data[data['raceomb_002'].astype(str)!=' ']
-        data = data[data['raceomb_002'].astype(str) != 'nan']
-    else:
-        data = data[data['raceomb'].astype(str) != ' ']
-        data = data[data['raceomb'].astype(str) != 'nan']
-    data = data[~np.isnan(data['cbsa_pop'])]
-    data['bias'] = data['D_biep.White_Good_all']>0
-    data['D_biep.White_Good_all'] = data['D_biep.White_Good_all'] + np.abs(data['D_biep.White_Good_all'].min()) + 1
-    bsdf = data[~numpy.isnan(data['birthsex'].astype(float))]
-    if bsdf.shape[0]>0:
-        print((bsdf['birthsex']=='1').sum(),(bsdf['birthsex']=='2').sum(),(bsdf['birthsex']=='1').sum()+(bsdf['birthsex']=='2').sum(),len(bsdf))
-    df = pandas.DataFrame(np.vstack([
-        np.log(data['cbsa_pop'].values),
-        categorical(data['raceomb_002' if year >2016 else 'raceomb'].values)[:, [6, 5, 8]].astype(int).T,
-        categorical(data['birthsex'].values)[:, [1]].astype(int).T,
-        categorical(data['edu_14'].values)[:, [1, 2, 3, 4]].sum(1).astype(int),
-        categorical(data['edu_14'].values)[:, [5, 6, 7]].sum(1).astype(int),
-        categorical(data['edu_14'].values)[:, 8:].sum(1).astype(int),
-        data['maj_group_adjust'].values,
-        data['het_correction'].values
-    ]).T, columns=[
-        'ln(population)',
-        'White',
-        'Black',
-        'Multiracial',
-        'Birth Sex',
-        'High School or Less',
-        'College',
-        'Advanced Degree',
-        'Diversity',
-        'Segregation'
-    ])
-    means = df.mean()
-    cols_to_keep = np.array(list(df.columns))[means!=0]
 
-    df = df[cols_to_keep]
-    df = df.reset_index().set_index('index')
-    individual_fit = Logit(data.reset_index()['bias'], add_constant(df)).fit()
-    if np.isnan(individual_fit.pvalues.values[0]):
-        individual_fit = Logit(data.reset_index()['bias'], add_constant(df.drop('High School or Less',inplace=False,axis=1))).fit()
-    with open(join(figure_root_path,'individual_iat_fit_%d.txt' % year), 'w') as f:
-        f.write(individual_fit.summary().as_latex())
+c=0
+with open(join(figure_root_path,'complete_model_summaries.csv'),'w') as f:
+    f.write('Ordinary Least Squares Regression Results\n')
+    for t in all_summaries:
+        if t[0]=='':
+            suffix = "Mean Exposure"
+        if t[0]=='_seg_idx':
+            suffix = "Segregation Index"
+        if t[0]=='_gini':
+            suffix = "Gini Coefficient"
+        if t[0]=='_exp':
+            suffix = "Exposure Index"
+        f.write('Segregation Measure: %s\n' % suffix)
+        dfs = t[1]
+        for i in range(len(dfs)):
+            f.write('Threshold: at least %d participants\n' % thresholds[i])
+            f.write(dfs[i].to_csv(index=False).replace('$','').replace(r"\beta",'beta').replace(r"\#",'#'))
+            c+=len(dfs)
+        f.write('\n\n')
 
-print()
+    # now write out all the heat models
+    f.write('Heat and ADI regression model results\n')
+    for t in all_summaries_heat:
+        if t[0] == '':
+            suffix = "Mean Exposure"
+        if t[0] == '_seg_idx':
+            suffix = "Segregation Index"
+        if t[0] == '_gini':
+            suffix = "Gini Coefficient"
+        if t[0] == '_exp':
+            suffix = "Exposure Index"
+        f.write('Segregation Measure: %s\n' % suffix)
+        dfs = t[1]
+        f.write(dfs.to_csv(index=False).replace('$', '').replace(r"\#", '#'))
+        c += len(dfs)*2
+    f.write('\n\n')
 
+print(c)

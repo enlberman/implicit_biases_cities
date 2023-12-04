@@ -9,10 +9,9 @@ from os.path import join
 COLORS = met_brew('Morgenstern',n=6,brew_type="continuous")
 STATE_FIPS = {"AL":"01","AK":"02","AZ":"04","AR":"05","CA":"06","CO":"08","CT":"09","DE":"10","DC":"11","FL":"12","GA":"13","HI":"15","ID":"16","IL":"17","IN":"18","IA":"19","KS":"20","KY":"21","LA":"22","ME":"23","MD":"24","MA":"25","MI":"26","MN":"27","MS":"28","MO":"29","MT":"30","NE":"31","NV":"32","NH":"33","NJ":"34","NM":"35","NY":"36","NC":"37","ND":"38","OH":"39","OK":"40","OR":"41","PA":"42","RI":"44","SC":"45","SD":"46","TN":"47","TX":"48","UT":"49","VT":"50","VA":"51","WA":"53","WV":"54","WI":"55","WY":"56","AS":"60","GU":"66","MP":"69","PR":"72","VI":"78"}
 
-figure_root_path = '/home/andrewstier/Downloads/scaling_homophily/figures_iat/'
-figure_root_path = 'IAT_data'
-data_path = '/home/andrewstier/Download/IAT_data'
-data_path = figure_root_path
+
+figure_root_path = 'IAT_figures'
+data_path = 'IAT_data'
 
 
 iat_data = pandas.read_csv(join(data_path,'cbsa_iat.csv'))
@@ -25,7 +24,9 @@ longitudinal_cbsa = numpy.unique(count_years[count_years['year']==11]['cbsa_code
 suffixs = ['','_seg_idx','_gini','_exp']
 sps = []
 spse = []
+all_fits_f_tests = []
 for suffix in suffixs:
+    gc_fits = []
     white_pop = numpy.load(join(data_path,'white_pop'+suffix+'.npy'),allow_pickle=True)
     black_pop = numpy.load(join(data_path,'black_pop'+suffix+'.npy'),allow_pickle=True)
     white_hom = numpy.load(join(data_path,'white_hom'+suffix+'.npy'),allow_pickle=True)
@@ -56,48 +57,51 @@ for suffix in suffixs:
     lags = [1,2,3]
     gcpop1 = []
     gcpop2 = []
-    for lag in lags:
-        gcpop1.append(numpy.vstack([[y[1] for y in x.values()] for x in [
-            grangercausalitytests(numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['iat_mean', 'pop']], 0),
-                                  maxlag=[lag])[lag][0] for i in range(n)]]))
-        gcpop2.append(numpy.vstack([[y[1] for y in x.values()] for x in [
-            grangercausalitytests(numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['pop', 'iat_mean']], 0),
-                                  maxlag=[lag])[lag][0] for i in range(n)]]))
-
     gcpop1f = []
     gcpop2f = []
+    popfits = []
     for lag in lags:
-        gcpop1f.append(numpy.vstack([[y[0] for y in x.values()] for x in [
-            grangercausalitytests(
-                numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['iat_mean', 'pop']], 0),
-                maxlag=[lag])[lag][0] for i in range(n)]]))
-        gcpop2f.append(numpy.vstack([[y[0] for y in x.values()] for x in [
-            grangercausalitytests(
-                numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['pop', 'iat_mean']], 0),
-                maxlag=[lag])[lag][0] for i in range(n)]]))
+        gcpopfits1 = [
+            grangercausalitytests(numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['iat_mean', 'pop']], 0),
+                                  maxlag=[lag])[lag][0] for i in range(n)]
+        gcpopfits2 = [
+            grangercausalitytests(numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['pop', 'iat_mean']], 0),
+                                    maxlag=[lag])[lag][0] for i in range(n)]
+        gcpop1.append(numpy.vstack([[y[1] for y in x.values()] for x in gcpopfits1]))
+        gcpop2.append(numpy.vstack([[y[1] for y in x.values()] for x in gcpopfits2]))
+        gcpop1f.append(numpy.vstack([[y[0] for y in x.values()] for x in gcpopfits1]))
+        gcpop2f.append(numpy.vstack([[y[0] for y in x.values()] for x in gcpopfits2]))
+        popfits.append([[y['params_ftest'] for y in gcpopfits1],[y['params_ftest'] for y in gcpopfits2]])
+    gc_fits.append(['pop',popfits])
     gcseg1 = []
     gcseg2 = []
+    segfits = []
     for lag in lags:
-        gcseg1.append(numpy.vstack([[y[1] for y in x.values()] for x in [
-            grangercausalitytests(
-                numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['iat_mean', 'seg']], 0),
-                maxlag=[lag])[lag][0] for i in range(n)]]))
-        gcseg2.append(numpy.vstack([[y[1] for y in x.values()] for x in [
-            grangercausalitytests(
-                numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['seg', 'iat_mean']], 0),
-                maxlag=[lag])[lag][0] for i in range(n)]]))
+        gcseg1fits = [
+            grangercausalitytests(numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['iat_mean', 'seg']], 0),
+                                  maxlag=[lag])[lag][0] for i in range(n)]
+        gcseg2fits = [
+            grangercausalitytests(numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['seg', 'iat_mean']], 0),
+                                    maxlag=[lag])[lag][0] for i in range(n)]
+        gcseg1.append(numpy.vstack([[y[1] for y in x.values()] for x in gcseg1fits]))
+        gcseg2.append(numpy.vstack([[y[1] for y in x.values()] for x in gcseg2fits]))
+        segfits.append([[y['params_ftest'] for y in gcseg1fits],[y['params_ftest'] for y in gcseg2fits]])
+    gc_fits.append(['seg',segfits])
 
     gcdiv1 = []
     gcdiv2 = []
+    gcdivfits = []
     for lag in lags:
-        gcdiv1.append(numpy.vstack([[y[1] for y in x.values()] for x in [
-            grangercausalitytests(
-                numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['iat_mean', 'div']], 0),
-                maxlag=[lag])[lag][0] for i in range(n)]]))
-        gcdiv2.append(numpy.vstack([[y[1] for y in x.values()] for x in [
-            grangercausalitytests(
-                numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['div', 'iat_mean']], 0),
-                maxlag=[lag])[lag][0] for i in range(n)]]))
+        gcdiv1fits = [
+            grangercausalitytests(numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['iat_mean', 'div']], 0),
+                                  maxlag=[lag])[lag][0] for i in range(n)]
+        gcdiv2fits = [
+            grangercausalitytests(numpy.diff([x for x in longitudinal.groupby('cbsa_code')][i][1][['div', 'iat_mean']], 0),
+                                    maxlag=[lag])[lag][0] for i in range(n)]
+        gcdiv1.append(numpy.vstack([[y[1] for y in x.values()] for x in gcdiv1fits]))
+        gcdiv2.append(numpy.vstack([[y[1] for y in x.values()] for x in gcdiv2fits]))
+        gcdivfits.append([[y['params_ftest'] for y in gcdiv1fits],[y['params_ftest'] for y in gcdiv2fits]])
+    gc_fits.append(['div',gcdivfits])
 
     x = range(1, 4)
     y1 = [(gcpop1[i] < .05)[:, 1].mean() for i in range(3)]
@@ -178,6 +182,7 @@ for suffix in suffixs:
             'bias->diversity std': y2diverr,
         }).to_csv(join(figure_root_path,'fig4.csv'))
 
+    all_fits_f_tests.append([suffix,gc_fits])
 
 def conv(arr):
     return [(r'%.1f' % (x * 100)) for x in arr]
@@ -212,3 +217,51 @@ with open(join(figure_root_path,'temporal_table.txt'),'w') as f:
                                        numpy.vstack((pop1, pop2, seg1, seg2, div1, div2)).T)).T)
         .to_latex(escape=False, index=False, header=False)
     )
+
+c=0
+with open(join(figure_root_path,'complete_model_summaries_test.csv'),'w') as f:
+    f.write('Granger Causality Models F Test Results\n')
+    f.write('Threshold: at least %d participants\n' % threshold)
+    for t in all_fits_f_tests:
+        if t[0] == '':
+            suffix = "Mean Exposure"
+        if t[0] == '_seg_idx':
+            suffix = "Segregation Index"
+        if t[0] == '_gini':
+            suffix = "Gini Coefficient"
+        if t[0] == '_exp':
+            suffix = "Exposure Index"
+        f.write('Segregation Measure: %s\n' % suffix)
+        dfs = t[1]
+        for r in dfs:
+            if r[0] == 'pop':
+                var = 'Population'
+            if r[0] == 'seg':
+                var = 'Segregation'
+            if r[0] == 'div':
+                var = 'Diversity'
+
+            for lag in range(len(r[1])):
+                f.write('Lag: %d\n' % (lag+1))
+                results = r[1][lag]
+                f.write('%s -> IAT\n' % var)
+                f.write('City #, F, p, df1, df2\n')
+                for i in range(len(results[0])):
+                    f.write('%d, %.3f, %s, %d, %d\n' % (i+1,results[0][i][0],'%.3f' % results[0][i][1] if results[0][i][1]>0.001 else '<0.001',results[0][i][2],results[0][i][3]))
+                    c += 1
+                f.write('\n')
+                f.write('IAT -> %s\n' % var)
+                f.write('City #, F, p, df1, df2\n')
+                for i in range(len(results[1])):
+                    f.write('%d, %.3f, %s, %d, %d\n' % (i+1,results[1][i][0],'%.3f' % results[1][i][1] if results[1][i][1]>0.001 else '<0.001',results[1][i][2],results[1][i][3]))
+                    c+=1
+    f.write('\n\n')
+
+print(c)
+
+
+
+
+
+
+
